@@ -1,0 +1,13 @@
+IP = '127.0.0.1'
+PORT = 5000
+
+PEERS = [
+    ('127.0.0.1', 5000),
+]
+
+BUFFER_SIZE = 1024
+CHUNK_SIZE = 512
+FOLDER = "temp"
+
+ACK_TIMEOUT = 1.0
+MAX_RETRIES = 5

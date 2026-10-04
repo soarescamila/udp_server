@@ -1,0 +1,137 @@
+import socket
+import os
+import base64
+from config import IP, PORT, BUFFER_SIZE, CHUNK_SIZE, FOLDER, ACK_TIMEOUT, MAX_RETRIES
+
+def calculate_checksum(data):
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    b = data if len(data) % 2 == 0 else data + b"\x00"
+    s = sum((b[i] << 8) | b[i+1] for i in range(0, len(b), 2))
+    while s >> 16:
+        s = (s & 0xFFFF) + (s >> 16)
+    return (~s) & 0xFFFF
+
+def create_packet(msg_type, payload=""):
+    body = f"{msg_type} {payload}".strip() if payload else msg_type
+    chk = calculate_checksum(body)
+    return f"{chk} {body}"
+
+def parse_packet(data):
+    parts = data.strip().split(' ', 2)
+    if len(parts) < 2:
+        return None, None
+    try:
+        recv_chk = int(parts[0])
+    except ValueError:
+        return None, None
+
+    msg_type = parts[1]
+    payload = parts[2] if len(parts) > 2 else ""
+
+    body = f"{msg_type} {payload}".strip() if payload else msg_type
+    if calculate_checksum(body) != recv_chk:
+        print("[SERVER] Corrupted packet received (checksum mismatch). Discarding...")
+        return None, None
+
+    return msg_type, payload
+
+
+def handle_request_file(filename, addr, server_socket):
+    file_path = os.path.join(FOLDER, filename)
+
+    if not os.path.exists(file_path):
+        error_packet = create_packet("ERROR", f"File '{filename}'not found")
+        server_socket.sendto(error_packet.encode('utf-8'), addr)
+        print(f"[SERVER] File '{filename}' not found.")
+        return
+
+    file_size = os.path.getsize(file_path)
+
+    # FILE_START
+    file_start = create_packet("FILE_START", f"{filename} {file_size}")
+    server_socket.sendto(file_start.encode('utf-8'), addr)
+    print(f"[SERVER] Sent 'FILE_START' for {filename}' ({file_size} bytes)")
+
+    # FILE_DATA chunks
+    chunck_idx = 0
+    with open(file_path, 'rb') as f:
+        while True:
+            chunk_data = f.read(CHUNK_SIZE)
+            if not chunk_data:
+                break
+
+            encoded_data = base64.b64encode(chunk_data).decode('utf-8')
+            file_data_packet = create_packet("FILE_DATA", f"{chunck_idx} {encoded_data}")
+            
+            # Stop-and-Wait
+            ack_received = False
+            retries = 0
+
+            while not ack_received and retries < MAX_RETRIES:
+                server_socket.sendto(file_data_packet.encode('utf-8'), addr)
+                
+                try:
+                    server_socket.settimeout(ACK_TIMEOUT)
+                    data, addr = server_socket.recvfrom(BUFFER_SIZE)
+                    message = data.decode('utf-8').strip()
+                    msg_type, payload = parse_packet(message)
+
+                    if msg_type == "ACK" and payload == str(chunck_idx):
+                        ack_received = True
+                
+                except socket.timeout:
+                    retries += 1
+                    print(f"[SERVER] Timeout waiting for ACK {chunck_idx}, retrying...")
+
+            if not ack_received:
+                print(f"[SERVER] Transfer failed: MAX_RETRIES reached for chunk {chunck_idx}.")
+                server_socket.settimeout(None)
+                return
+                
+            chunck_idx += 1
+
+    server_socket.settimeout(None)
+
+    # FILE_END
+    file_end_packet = create_packet("FILE_END", filename)
+    server_socket.sendto(file_end_packet.encode('utf-8'), addr)
+    print(f"[SERVER] Sent 'FILE_END' for '{filename}'")
+
+
+def start_server():
+    os.makedirs(FOLDER, exist_ok=True)
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_socket.bind((IP, PORT))
+    print(f"[SERVER] Server listening on {IP}:{PORT}")
+
+    while True:
+        data, addr = server_socket.recvfrom(BUFFER_SIZE)
+        message = data.decode('utf-8').strip()
+
+        if not message:
+            continue
+
+        msg_type, payload = parse_packet(message)
+        msg_type = msg_type.upper()
+
+        if msg_type == "HELLO":
+            response = create_packet("ACK", "HELLO")
+            server_socket.sendto(response.encode('utf-8'), addr)
+
+        elif msg_type == "REQUEST_FILE":
+            filename = payload.strip()
+            handle_request_file(filename, addr, server_socket)
+        
+        elif msg_type == "ACK":
+            print(f"[SERVER] Received ACK payload from {addr}: {payload}")
+        
+        elif msg_type == "ERROR":
+            print(f"[SERVER] Received ERROR report from {addr}: {payload}")
+        
+        else:
+            error_response = create_packet("ERROR", f"Unknown message type '{msg_type}'")
+            server_socket.sendto(error_response.encode('utf-8'), addr)
+
+if __name__ == "__main__":
+    start_server()
