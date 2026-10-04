@@ -3,6 +3,7 @@ import os
 import base64
 import math
 from config import PEERS, BUFFER_SIZE, FOLDER, CHUNK_SIZE
+from server import active_peers, show_dashboard
 
 def calculate_checksum(data):
     if isinstance(data, str):
@@ -68,7 +69,7 @@ def announce_local_files():
         fpath = os.path.join(FOLDER, fname)
         if os.path.isfile(fpath):
             fsize = os.path.getsize(fpath)
-            for peer_ip, peer_port in PEERS:
+            for peer_ip, peer_port in list(active_peers):
                 print(f"[CLIENT] Announcing '{fname} ({fsize} bytes) to {peer_ip}:{peer_port}'")
                 resp_type, resp_payload = send_packet(peer_ip, peer_port, "ANNOUNCE",f"{fname} {fsize}")
                 if resp_type == "ACK":
@@ -80,15 +81,13 @@ def list_files(ip, port):
 
     if resp_type == "LIST_RESPONSE":
         if resp_payload == "EMPTY" or not resp_payload:
-            print(f"[CLIENT] Peer {ip}:{port} has no available files")
             return []
 
-        print(f"[CLIENT] Available files at {ip}:{port}:")
         files = []
         for item in resp_payload.split(','):
-            fname, fsize = item.split(':')
-            print(f"- {fname} ({fsize} bytes)")
-            files.append((fname, fsize))
+            if ':' in item:
+                fname, fsize = item.split(':')
+                files.append((fname, fsize))
         return files
     return []
 
@@ -168,30 +167,35 @@ def request_file(ip, port, filename):
 def delete_and_sync_file(fname):
         file_path = os.path.join(FOLDER, fname)
 
-        delete_local = False
-
         if os.path.exists(file_path):
             os.remove(file_path)
-            delete_local = True
-
-        if delete_local:
             print(f"[CLIENT] Local file '{fname}' removed")
-        else:
-            print(f"[CLIENT] File '{fname}' not found locally")
+            show_dashboard()
 
-        for peer_ip, peer_port in PEERS:
+        for peer_ip, peer_port in list(active_peers):
             print(f"[CLIENT] Announcing deletion of '{fname}' to {peer_ip}:{peer_port}")
             resp_type, resp_payload = send_packet(peer_ip, peer_port, "DELETE", fname)
-            if resp_type == "ACK":
-                print(f"[CLIENT] Deletion of '{fname}' acknowledged by {peer_ip}:{peer_port}")
 
+def sync_new_peer():
+    os.makedirs(FOLDER, exist_ok=True)
+    local_files = set(os.listdir(FOLDER)) if os.path.exists(FOLDER) else set()
+
+    download_any = False
+
+    for peer_ip, peer_port in list(active_peers):
+        remote_files = list_files(peer_ip, peer_port)
+        for fname, fsize in remote_files:
+            if fname not in local_files:
+                print(f"[CLIENT] New file found '{fname}'. Syncing...")
+                download_success = request_file(peer_ip, peer_port, fname)
+                if download_success:
+                    local_files.add(fname)
+                    download_any = True
+    
+    if download_any:
+        announce_local_files()
+        show_dashboard()
 
 if __name__ == "__main__":
-    print("--- 1. Announcing local files in temp/ ---")
     announce_local_files()
-
-    print("\n--- 2. Syncing file deletion across network ---")
-    delete_and_sync_file("sample.txt")
-
-    print("\n--- 3. Verifying updated file list ---")
-    list_files("127.0.0.1", 5000)
+    sync_new_peer()
