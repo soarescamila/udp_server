@@ -73,10 +73,11 @@ def show_dashboard():
     print("="*70 + "\n")
 
 def register_peer(addr):
-    ip, port = addr
-    if addr not in active_peers and ip not in ('127.0.0.1', '0.0.0.0'):
-        active_peers.add(addr)
-        print(f"[SERVER] New peer added: {addr}")
+    ip = addr[0]
+    fixed_peer_addr = (ip, PORT)
+    if fixed_peer_addr not in active_peers and ip not in ('127.0.0.1', '0.0.0.0') and not ip.endswith('.1'):
+        active_peers.add(fixed_peer_addr)
+        print(f"\n[NOVO PEER DETECTADO] Peer registrado -> {fixed_peer_addr}")
         show_dashboard()
 
 def get_local_files():
@@ -174,15 +175,15 @@ def start_server():
             parts = payload.split(' ')
             if len(parts) >= 2:
                 fname, fsize = parts[0], parts[1]
-                files_list[fname] = {'size': fsize, 'peer': addr}
-                print(f"[SERVER] Registered announced file '{fname}' ({fsize}) bytes")
+                files_list[fname] = {'size': fsize, 'peer': (addr[0], PORT)}
+                print(f"[SERVER] Registered announced file '{fname}' ({fsize} bytes) from {addr[0]}:{PORT}")
                 ack_response = create_packet("ACK", f"ANNOUNCE {fname}")
                 server_socket.sendto(ack_response.encode('utf-8'), addr)
 
                 file_path = os.path.join(FOLDER, fname)
                 if not os.path.exists(file_path):
                     from client import request_file
-                    threading.Thread(target=request_file, args=(addr[0], addr[1], fname), daemon=True).start()
+                    threading.Thread(target=request_file, args=(addr[0], PORT, fname), daemon=True).start()
 
         elif msg_type == "LIST":
             local_list = get_local_files()

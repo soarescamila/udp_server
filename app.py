@@ -27,8 +27,8 @@ def folder_monitor():
         if deleted_files:
             for fname in deleted_files:
                 delete_and_sync_file(fname)
-                show_dashboard()
-                known_files = current_files
+            show_dashboard()
+            known_files = current_files
 
 
 def run():
