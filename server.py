@@ -3,6 +3,8 @@ import os
 import base64
 from config import IP, PORT, BUFFER_SIZE, CHUNK_SIZE, FOLDER, ACK_TIMEOUT, MAX_RETRIES
 
+files_list = {}
+
 def calculate_checksum(data):
     if isinstance(data, str):
         data = data.encode('utf-8')
@@ -36,6 +38,14 @@ def parse_packet(data):
 
     return msg_type, payload
 
+def get_local_files():
+    files = []
+    if os.path.exists(FOLDER):
+        for fname in os.listdir(FOLDER):
+            fpath = os.path.join(FOLDER, fname)
+            if os.path.isfile(fpath):
+                files.append(f"{fname}: {os.path.getsize(fpath)}")
+    return ",".join(files)
 
 def handle_request_file(filename, addr, server_socket):
     file_path = os.path.join(FOLDER, filename)
@@ -119,19 +129,29 @@ def start_server():
             response = create_packet("ACK", "HELLO")
             server_socket.sendto(response.encode('utf-8'), addr)
 
+        elif msg_type == "ANNOUNCE":
+            parts = payload.split(' ')
+            if len(parts) >= 2:
+                fname, fsize = parts[0], parts[1]
+                files_list[fname] = {'size': fsize, 'peer': addr}
+                print(f"[SERVER] Registered announced file '{fname}' ({fsize}) bytes")
+                ack_response = create_packet("ACK", f"ANNOUNCE {fname}")
+                server_socket.sendto(ack_response.encode('utf-8'), addr)
+
+        elif msg_type == "LIST":
+            local_list = get_local_files()
+            response = create_packet("LIST_RESPONSE", local_list if local_list else "EMPTY")
+            server_socket.sendto(response.encode('utf-8'), addr)
+            print(f"[SERVER] Sent local file list to {addr}")
+
         elif msg_type == "REQUEST_FILE":
             filename = payload.strip()
             handle_request_file(filename, addr, server_socket)
         
-        elif msg_type == "ACK":
-            print(f"[SERVER] Received ACK payload from {addr}: {payload}")
         
         elif msg_type == "ERROR":
             print(f"[SERVER] Received ERROR report from {addr}: {payload}")
         
-        else:
-            error_response = create_packet("ERROR", f"Unknown message type '{msg_type}'")
-            server_socket.sendto(error_response.encode('utf-8'), addr)
 
 if __name__ == "__main__":
     start_server()
