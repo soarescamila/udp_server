@@ -1,6 +1,7 @@
 import socket
 import os
 import base64
+import threading
 from config import IP, PORT, BUFFER_SIZE, CHUNK_SIZE, FOLDER, ACK_TIMEOUT, MAX_RETRIES, PEERS
 
 active_peers = set(PEERS)
@@ -177,6 +178,11 @@ def start_server():
                 print(f"[SERVER] Registered announced file '{fname}' ({fsize}) bytes")
                 ack_response = create_packet("ACK", f"ANNOUNCE {fname}")
                 server_socket.sendto(ack_response.encode('utf-8'), addr)
+
+                file_path = os.path.join(FOLDER, fname)
+                if not os.path.exists(file_path):
+                    from client import request_file
+                    threading.Thread(target=request_file, args=(addr[0], addr[1], fname), daemon=True).start()
 
         elif msg_type == "LIST":
             local_list = get_local_files()
