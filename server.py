@@ -123,13 +123,11 @@ def start_server():
             continue
 
         msg_type, payload = parse_packet(message)
-        msg_type = msg_type.upper()
+        
+        if msg_type is None:
+            continue
 
-        if msg_type == "HELLO":
-            response = create_packet("ACK", "HELLO")
-            server_socket.sendto(response.encode('utf-8'), addr)
-
-        elif msg_type == "ANNOUNCE":
+        if msg_type == "ANNOUNCE":
             parts = payload.split(' ')
             if len(parts) >= 2:
                 fname, fsize = parts[0], parts[1]
@@ -147,6 +145,27 @@ def start_server():
         elif msg_type == "REQUEST_FILE":
             filename = payload.strip()
             handle_request_file(filename, addr, server_socket)
+
+        
+        elif msg_type == "DELETE":
+            fname = payload.strip()
+            if fname in files_list:
+                del files_list[fname]
+
+            file_path = os.path.join(FOLDER, fname)
+
+            deleted = False
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                deleted = True
+            
+            if deleted:
+                print(f"[SERVER] File '{fname} deleted locally'")
+            else:
+                print(f"[SERVER] Delete request received for '{fname}', but file was not found.")
+
+            ack_response = create_packet("ACK", f"DELETE {fname}")
+            server_socket.sendto(ack_response.encode('utf-8'), addr)
         
         
         elif msg_type == "ERROR":

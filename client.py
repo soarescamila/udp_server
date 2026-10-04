@@ -92,7 +92,6 @@ def list_files(ip, port):
         return files
     return []
 
-
 def request_file(ip, port, filename):
     os.makedirs(FOLDER, exist_ok=True)
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -166,15 +165,33 @@ def request_file(ip, port, filename):
             file_handle.close()
         client_socket.close()
 
+def delete_and_sync_file(fname):
+        file_path = os.path.join(FOLDER, fname)
+
+        delete_local = False
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            delete_local = True
+
+        if delete_local:
+            print(f"[CLIENT] Local file '{fname}' removed")
+        else:
+            print(f"[CLIENT] File '{fname}' not found locally")
+
+        for peer_ip, peer_port in PEERS:
+            print(f"[CLIENT] Announcing deletion of '{fname}' to {peer_ip}:{peer_port}")
+            resp_type, resp_payload = send_packet(peer_ip, peer_port, "DELETE", fname)
+            if resp_type == "ACK":
+                print(f"[CLIENT] Deletion of '{fname}' acknowledged by {peer_ip}:{peer_port}")
+
 
 if __name__ == "__main__":
     print("--- 1. Announcing local files in temp/ ---")
     announce_local_files()
 
-    print("\n--- 2. Requesting file list from peer ---")
-    available_files = list_files("127.0.0.1", 5000)
+    print("\n--- 2. Syncing file deletion across network ---")
+    delete_and_sync_file("sample.txt")
 
-    if available_files:
-        first_filename = available_files[0][0]
-        print(f"\n--- 3. Downloading first discovered file: {first_filename} ---")
-        request_file("127.0.0.1", 5000, first_filename)
+    print("\n--- 3. Verifying updated file list ---")
+    list_files("127.0.0.1", 5000)
