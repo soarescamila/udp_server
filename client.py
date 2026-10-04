@@ -38,6 +38,60 @@ def parse_packet(data):
 
     return msg_type, payload
 
+def send_packet(ip, port, msg_type, payload=""):
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    client_socket.settimeout(2.0)
+    packet = create_packet(msg_type, payload)
+
+    try:
+        client_socket.sendto(packet.encode('utf-8'), (ip, port))
+        data, addr = client_socket.recvfrom(BUFFER_SIZE)
+        message = data.decode('utf-8').strip()
+        return parse_packet(message)
+    
+    except socket.timeout:
+        print(f"[CLIENT] Timeout waiting for response to '{msg_type} from {ip}:{port}'")
+        return None, None
+
+    except Exception as e:
+        print(f"[CLIENT] Error sending to {ip}:{port}: {e}")
+        return None, None
+    finally:
+        client_socket.close()
+
+
+def announce_local_files():
+    if not os.path.exists(FOLDER):
+        return
+
+    for fname in os.listdir(FOLDER):
+        fpath = os.path.join(FOLDER, fname)
+        if os.path.isfile(fpath):
+            fsize = os.path.getsize(fpath)
+            for peer_ip, peer_port in PEERS:
+                print(f"[CLIENT] Announcing '{fname} ({fsize} bytes) to {peer_ip}:{peer_port}'")
+                resp_type, resp_payload = send_packet(peer_ip, peer_port, "ANNOUNCE",f"{fname} {fsize}")
+                if resp_type == "ACK":
+                    print(f"[CLIENT] Announcement acknowledged by {peer_ip}:{peer_port}")
+
+
+def list_files(ip, port):
+    resp_type, resp_payload = send_packet(ip, port, "LIST", "")
+
+    if resp_type == "LIST_RESPONSE":
+        if resp_payload == "EMPTY" or not resp_payload:
+            print(f"[CLIENT] Peer {ip}:{port} has no available files")
+            return []
+
+        print(f"[CLIENT] Available files at {ip}:{port}:")
+        files = []
+        for item in resp_payload.split(','):
+            fname, fsize = item.split(':')
+            print(f"- {fname} ({fsize} bytes)")
+            files.append((fname, fsize))
+        return files
+    return []
+
 
 def request_file(ip, port, filename):
     os.makedirs(FOLDER, exist_ok=True)
@@ -114,4 +168,13 @@ def request_file(ip, port, filename):
 
 
 if __name__ == "__main__":
-    request_file("127.0.0.1", 5000, "boleto.pdf")
+    print("--- 1. Announcing local files in temp/ ---")
+    announce_local_files()
+
+    print("\n--- 2. Requesting file list from peer ---")
+    available_files = list_files("127.0.0.1", 5000)
+
+    if available_files:
+        first_filename = available_files[0][0]
+        print(f"\n--- 3. Downloading first discovered file: {first_filename} ---")
+        request_file("127.0.0.1", 5000, first_filename)
