@@ -62,7 +62,7 @@ def show_dashboard():
 
     print("-" * 70)
     
-    print(f"Arquivos Armazenados neste Peer (Pasta '{STORAGE_FOLDER}/'): {len(local_files)}")
+    print(f"Arquivos Armazenados neste Peer (Pasta '{FOLDER}/'): {len(local_files)}")
     if local_files:
         for fname, fsize in local_files:
             print(f"  ├── {fname} ({fsize:,} bytes)")
