@@ -97,7 +97,7 @@ def request_file(ip, port, filename):
     client_socket.settimeout(5.0)
 
     request_packet = create_packet("REQUEST_FILE", filename)
-    output_filepath = os.path.join(FOLDER, f"downloaded_{filename}")
+    output_filepath = os.path.join(FOLDER, f"{filename}")
 
     try:
         print(f"[CLIENT] Requesting file '{filename}' from {ip}:{port}")
