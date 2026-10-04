@@ -2,7 +2,7 @@ import socket
 import os
 import base64
 import math
-from config import PEERS, BUFFER_SIZE, FOLDER, CHUNK_SIZE
+from config import PEERS, BUFFER_SIZE, FOLDER, CHUNK_SIZE, PORT
 from server import active_peers, show_dashboard
 
 def calculate_checksum(data):
@@ -71,7 +71,7 @@ def announce_local_files():
             fsize = os.path.getsize(fpath)
             for peer_ip, peer_port in list(active_peers):
                 print(f"[CLIENT] Announcing '{fname} ({fsize} bytes) to {peer_ip}:{peer_port}'")
-                resp_type, resp_payload = send_packet(peer_ip, peer_port, "ANNOUNCE",f"{fname} {fsize}")
+                resp_type, resp_payload = send_packet(peer_ip, peer_port, "ANNOUNCE",f"{fname} {fsize} {PORT}")
                 if resp_type == "ACK":
                     print(f"[CLIENT] Announcement acknowledged by {peer_ip}:{peer_port}")
 
