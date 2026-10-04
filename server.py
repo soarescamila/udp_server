@@ -40,12 +40,12 @@ def parse_packet(data):
     return msg_type, payload
 
 def show_dashboard():
-    os.makedirs(STORAGE_FOLDER, exist_ok=True)
+    os.makedirs(FOLDER, exist_ok=True)
     
     local_files = []
-    if os.path.exists(STORAGE_FOLDER):
-        for fname in os.listdir(STORAGE_FOLDER):
-            fpath = os.path.join(STORAGE_FOLDER, fname)
+    if os.path.exists(FOLDER):
+        for fname in os.listdir(FOLDER):
+            fpath = os.path.join(FOLDER, fname)
             if os.path.isfile(fpath):
                 local_files.append((fname, os.path.getsize(fpath)))
 
