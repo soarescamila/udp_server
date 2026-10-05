@@ -2,7 +2,8 @@ import socket
 import os
 import base64
 import math
-from config import PEERS, BUFFER_SIZE, FOLDER, CHUNK_SIZE
+from config import PEERS, BUFFER_SIZE, FOLDER, CHUNK_SIZE, PORT
+from server import active_peers, show_dashboard
 
 def calculate_checksum(data):
     if isinstance(data, str):
@@ -68,9 +69,9 @@ def announce_local_files():
         fpath = os.path.join(FOLDER, fname)
         if os.path.isfile(fpath):
             fsize = os.path.getsize(fpath)
-            for peer_ip, peer_port in PEERS:
+            for peer_ip, peer_port in list(active_peers):
                 print(f"[CLIENT] Announcing '{fname} ({fsize} bytes) to {peer_ip}:{peer_port}'")
-                resp_type, resp_payload = send_packet(peer_ip, peer_port, "ANNOUNCE",f"{fname} {fsize}")
+                resp_type, resp_payload = send_packet(peer_ip, peer_port, "ANNOUNCE",f"{fname} {fsize} {PORT}")
                 if resp_type == "ACK":
                     print(f"[CLIENT] Announcement acknowledged by {peer_ip}:{peer_port}")
 
@@ -80,18 +81,15 @@ def list_files(ip, port):
 
     if resp_type == "LIST_RESPONSE":
         if resp_payload == "EMPTY" or not resp_payload:
-            print(f"[CLIENT] Peer {ip}:{port} has no available files")
             return []
 
-        print(f"[CLIENT] Available files at {ip}:{port}:")
         files = []
         for item in resp_payload.split(','):
-            fname, fsize = item.split(':')
-            print(f"- {fname} ({fsize} bytes)")
-            files.append((fname, fsize))
+            if ':' in item:
+                fname, fsize = item.split(':')
+                files.append((fname, fsize))
         return files
     return []
-
 
 def request_file(ip, port, filename):
     os.makedirs(FOLDER, exist_ok=True)
@@ -99,7 +97,7 @@ def request_file(ip, port, filename):
     client_socket.settimeout(5.0)
 
     request_packet = create_packet("REQUEST_FILE", filename)
-    output_filepath = os.path.join(FOLDER, f"downloaded_{filename}")
+    output_filepath = os.path.join(FOLDER, f"{filename}")
 
     try:
         print(f"[CLIENT] Requesting file '{filename}' from {ip}:{port}")
@@ -166,15 +164,38 @@ def request_file(ip, port, filename):
             file_handle.close()
         client_socket.close()
 
+def delete_and_sync_file(fname):
+        file_path = os.path.join(FOLDER, fname)
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"[CLIENT] Local file '{fname}' removed")
+            show_dashboard()
+
+        for peer_ip, peer_port in list(active_peers):
+            print(f"[CLIENT] Announcing deletion of '{fname}' to {peer_ip}:{peer_port}")
+            resp_type, resp_payload = send_packet(peer_ip, peer_port, "DELETE", fname)
+
+def sync_new_peer():
+    os.makedirs(FOLDER, exist_ok=True)
+    local_files = set(os.listdir(FOLDER)) if os.path.exists(FOLDER) else set()
+
+    download_any = False
+
+    for peer_ip, peer_port in list(active_peers):
+        remote_files = list_files(peer_ip, peer_port)
+        for fname, fsize in remote_files:
+            if fname not in local_files:
+                print(f"[CLIENT] New file found '{fname}'. Syncing...")
+                download_success = request_file(peer_ip, peer_port, fname)
+                if download_success:
+                    local_files.add(fname)
+                    download_any = True
+    
+    if download_any:
+        announce_local_files()
+        show_dashboard()
 
 if __name__ == "__main__":
-    print("--- 1. Announcing local files in temp/ ---")
     announce_local_files()
-
-    print("\n--- 2. Requesting file list from peer ---")
-    available_files = list_files("127.0.0.1", 5000)
-
-    if available_files:
-        first_filename = available_files[0][0]
-        print(f"\n--- 3. Downloading first discovered file: {first_filename} ---")
-        request_file("127.0.0.1", 5000, first_filename)
+    sync_new_peer()

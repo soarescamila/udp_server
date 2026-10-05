@@ -1,8 +1,10 @@
 import socket
 import os
 import base64
-from config import IP, PORT, BUFFER_SIZE, CHUNK_SIZE, FOLDER, ACK_TIMEOUT, MAX_RETRIES
+import threading
+from config import IP, PORT, BUFFER_SIZE, CHUNK_SIZE, FOLDER, ACK_TIMEOUT, MAX_RETRIES, PEERS
 
+active_peers = set(PEERS)
 files_list = {}
 
 def calculate_checksum(data):
@@ -37,6 +39,45 @@ def parse_packet(data):
         return None, None
 
     return msg_type, payload
+
+def show_dashboard():
+    os.makedirs(FOLDER, exist_ok=True)
+    
+    local_files = []
+    if os.path.exists(FOLDER):
+        for fname in os.listdir(FOLDER):
+            fpath = os.path.join(FOLDER, fname)
+            if os.path.isfile(fpath):
+                local_files.append((fname, os.path.getsize(fpath)))
+
+    print("\n" + "="*70)
+    print("                       PAINEL DO PEER LOCAL")
+    print("="*70)
+    
+    print(f"Peers Conectados/Ativos na Rede ({len(active_peers)}):")
+    if active_peers:
+        for peer_ip, peer_port in list(active_peers):
+            print(f"  - {peer_ip}:{peer_port} [ONLINE]")
+    else:
+        print("  - Nenhum peer remoto conectado no momento.")
+
+    print("-" * 70)
+    
+    print(f"Arquivos Armazenados neste Peer (Pasta '{FOLDER}/'): {len(local_files)}")
+    if local_files:
+        for fname, fsize in local_files:
+            print(f"  ├── {fname} ({fsize:,} bytes)")
+    else:
+        print("  └── (Nenhum arquivo armazenado neste peer)")
+        
+    print("="*70 + "\n")
+
+def register_peer(addr):
+    ip, port = addr
+    if addr not in active_peers and ip not in ('0.0.0.0') and not ip.endswith('.1'):
+        active_peers.add(addr)
+        print(f"\n[NOVO PEER DETECTADO] Peer registrado -> {addr}")
+        show_dashboard()
 
 def get_local_files():
     files = []
@@ -115,6 +156,8 @@ def start_server():
     server_socket.bind((IP, PORT))
     print(f"[SERVER] Server listening on {IP}:{PORT}")
 
+    show_dashboard()
+
     while True:
         data, addr = server_socket.recvfrom(BUFFER_SIZE)
         message = data.decode('utf-8').strip()
@@ -123,20 +166,29 @@ def start_server():
             continue
 
         msg_type, payload = parse_packet(message)
-        msg_type = msg_type.upper()
+        
+        if msg_type is None:
+            continue
 
-        if msg_type == "HELLO":
-            response = create_packet("ACK", "HELLO")
-            server_socket.sendto(response.encode('utf-8'), addr)
-
-        elif msg_type == "ANNOUNCE":
+        if msg_type == "ANNOUNCE":
             parts = payload.split(' ')
             if len(parts) >= 2:
                 fname, fsize = parts[0], parts[1]
-                files_list[fname] = {'size': fsize, 'peer': addr}
-                print(f"[SERVER] Registered announced file '{fname}' ({fsize}) bytes")
+                files_list[fname] = {'size': fsize, 'peer': (addr[0], PORT)}
+
+                sender_port = int(parts[2]) if len(parts) >= 3 else addr[1]
+                sender_addr = (addr[0], sender_port)
+
+                register_peer(sender_addr)
+                files_list[fname] = {'size': fsize, 'peer': sender_addr}
+
                 ack_response = create_packet("ACK", f"ANNOUNCE {fname}")
                 server_socket.sendto(ack_response.encode('utf-8'), addr)
+
+                file_path = os.path.join(FOLDER, fname)
+                if not os.path.exists(file_path):
+                    from client import request_file
+                    threading.Thread(target=request_file, args=(sender_addr[0], sender_addr[1], fname), daemon=True).start()
 
         elif msg_type == "LIST":
             local_list = get_local_files()
@@ -147,6 +199,22 @@ def start_server():
         elif msg_type == "REQUEST_FILE":
             filename = payload.strip()
             handle_request_file(filename, addr, server_socket)
+
+        
+        elif msg_type == "DELETE":
+            fname = payload.strip()
+            if fname in files_list:
+                del files_list[fname]
+
+            file_path = os.path.join(FOLDER, fname)
+
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"[SERVER] File {fname} deleted locally")
+                show_dashboard()            
+
+            ack_response = create_packet("ACK", f"DELETE {fname}")
+            server_socket.sendto(ack_response.encode('utf-8'), addr)
         
         
         elif msg_type == "ERROR":
