@@ -2,8 +2,8 @@ import socket
 import os
 import base64
 import math
-from config import PEERS, BUFFER_SIZE, FOLDER, CHUNK_SIZE, PORT
-from server import active_peers, show_dashboard
+from udp.config import PEERS, BUFFER_SIZE, FOLDER, CHUNK_SIZE, PORT
+from udp.server import active_peers, show_dashboard
 
 def calculate_checksum(data):
     if isinstance(data, str):

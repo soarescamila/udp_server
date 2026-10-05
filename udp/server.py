@@ -2,7 +2,7 @@ import socket
 import os
 import base64
 import threading
-from config import IP, PORT, BUFFER_SIZE, CHUNK_SIZE, FOLDER, ACK_TIMEOUT, MAX_RETRIES, PEERS
+from udp.config import IP, PORT, BUFFER_SIZE, CHUNK_SIZE, FOLDER, ACK_TIMEOUT, MAX_RETRIES, PEERS
 
 active_peers = set(PEERS)
 files_list = {}
@@ -187,7 +187,7 @@ def start_server():
 
                 file_path = os.path.join(FOLDER, fname)
                 if not os.path.exists(file_path):
-                    from client import request_file
+                    from udp.client import request_file
                     threading.Thread(target=request_file, args=(sender_addr[0], sender_addr[1], fname), daemon=True).start()
 
         elif msg_type == "LIST":

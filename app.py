@@ -2,9 +2,9 @@ import threading
 import time
 import sys
 import os
-from server import start_server
-from client import announce_local_files, sync_new_peer, show_dashboard, delete_and_sync_file
-from config import FOLDER
+from udp.server import start_server
+from udp.client import announce_local_files, sync_new_peer, show_dashboard, delete_and_sync_file
+from udp.config import FOLDER
 
 def folder_monitor():
     os.makedirs(FOLDER, exist_ok=True)
@@ -32,7 +32,7 @@ def folder_monitor():
 
 
 def run():
-    print("="* 20 + " STARTING UDP SERVER " + "="*20)
+    print("STARTING UDP SERVER")
 
     server_thread = threading.Thread(target=start_server, daemon=True)
     server_thread.start()
