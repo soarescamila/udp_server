@@ -2,7 +2,8 @@ import socket
 import os
 import base64
 import math
-from config import PEERS, BUFFER_SIZE, FOLDER, CHUNK_SIZE
+from config import PEERS, BUFFER_SIZE, FOLDER, CHUNK_SIZE, PORT
+from server import active_peers, show_dashboard
 
 def calculate_checksum(data):
     if isinstance(data, str):
@@ -38,6 +39,57 @@ def parse_packet(data):
 
     return msg_type, payload
 
+def send_packet(ip, port, msg_type, payload=""):
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    client_socket.settimeout(2.0)
+    packet = create_packet(msg_type, payload)
+
+    try:
+        client_socket.sendto(packet.encode('utf-8'), (ip, port))
+        data, addr = client_socket.recvfrom(BUFFER_SIZE)
+        message = data.decode('utf-8').strip()
+        return parse_packet(message)
+    
+    except socket.timeout:
+        print(f"[CLIENT] Timeout waiting for response to '{msg_type} from {ip}:{port}'")
+        return None, None
+
+    except Exception as e:
+        print(f"[CLIENT] Error sending to {ip}:{port}: {e}")
+        return None, None
+    finally:
+        client_socket.close()
+
+
+def announce_local_files():
+    if not os.path.exists(FOLDER):
+        return
+
+    for fname in os.listdir(FOLDER):
+        fpath = os.path.join(FOLDER, fname)
+        if os.path.isfile(fpath):
+            fsize = os.path.getsize(fpath)
+            for peer_ip, peer_port in list(active_peers):
+                print(f"[CLIENT] Announcing '{fname} ({fsize} bytes) to {peer_ip}:{peer_port}'")
+                resp_type, resp_payload = send_packet(peer_ip, peer_port, "ANNOUNCE",f"{fname} {fsize} {PORT}")
+                if resp_type == "ACK":
+                    print(f"[CLIENT] Announcement acknowledged by {peer_ip}:{peer_port}")
+
+
+def list_files(ip, port):
+    resp_type, resp_payload = send_packet(ip, port, "LIST", "")
+
+    if resp_type == "LIST_RESPONSE":
+        if resp_payload == "EMPTY" or not resp_payload:
+            return []
+
+        files = []
+        for item in resp_payload.split(','):
+            if ':' in item:
+                fname, fsize = item.split(':')
+                files.append((fname, fsize))
+        return files
+    return []
 
 def request_file(ip, port, filename):
     os.makedirs(FOLDER, exist_ok=True)
@@ -45,7 +97,7 @@ def request_file(ip, port, filename):
     client_socket.settimeout(5.0)
 
     request_packet = create_packet("REQUEST_FILE", filename)
-    output_filepath = os.path.join(FOLDER, f"downloaded_{filename}")
+    output_filepath = os.path.join(FOLDER, f"{filename}")
 
     try:
         print(f"[CLIENT] Requesting file '{filename}' from {ip}:{port}")
@@ -112,6 +164,38 @@ def request_file(ip, port, filename):
             file_handle.close()
         client_socket.close()
 
+def delete_and_sync_file(fname):
+        file_path = os.path.join(FOLDER, fname)
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"[CLIENT] Local file '{fname}' removed")
+            show_dashboard()
+
+        for peer_ip, peer_port in list(active_peers):
+            print(f"[CLIENT] Announcing deletion of '{fname}' to {peer_ip}:{peer_port}")
+            resp_type, resp_payload = send_packet(peer_ip, peer_port, "DELETE", fname)
+
+def sync_new_peer():
+    os.makedirs(FOLDER, exist_ok=True)
+    local_files = set(os.listdir(FOLDER)) if os.path.exists(FOLDER) else set()
+
+    download_any = False
+
+    for peer_ip, peer_port in list(active_peers):
+        remote_files = list_files(peer_ip, peer_port)
+        for fname, fsize in remote_files:
+            if fname not in local_files:
+                print(f"[CLIENT] New file found '{fname}'. Syncing...")
+                download_success = request_file(peer_ip, peer_port, fname)
+                if download_success:
+                    local_files.add(fname)
+                    download_any = True
+    
+    if download_any:
+        announce_local_files()
+        show_dashboard()
 
 if __name__ == "__main__":
-    request_file("127.0.0.1", 5000, "boleto.pdf")
+    announce_local_files()
+    sync_new_peer()

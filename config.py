@@ -1,11 +1,11 @@
-IP = '127.0.0.1'
+IP = '0.0.0.0'
 PORT = 5000
 
 PEERS = [
-    ('127.0.0.1', 5000),
+    ('127.0.0.1', 5001),
 ]
 
-BUFFER_SIZE = 1024
+BUFFER_SIZE = 4096
 CHUNK_SIZE = 512
 FOLDER = "temp"
 
