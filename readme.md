@@ -28,15 +28,13 @@ A transferência de arquivos fragmenta os dados em blocos de 512 bytes:
 
 **3. Monitor de Pasta (folder_monitor):** Monitora em segundo plano a pasta temp/ local a cada 2 segundos. Se um arquivo for colado ou excluído diretamente pelo sistema operacional, a alteração é propagada via `ANNOUNCE` ou `DELETE` para todos os peers. 
 
-### Instalação do Python 3.13
-Certifique-se de ter o Python 3.13 (ou superior) instalado. Pode ser via instalador oficial no site https://www.python.org/downloads ou via terminal.
+### Setup
+Necessário o Python 3.13 (ou superior) instalado. Pode ser via instalador oficial no site https://www.python.org/downloads ou via terminal.
 
 **Windows (PowerShell):**
 ```PowerShell
  winget install -e --id Python.Python.3.13
  ```
-
-Via Instalador Oficial:Baixe o instalador no site python.org e marque a caixa "Add Python to PATH" durante a instalação.
 
 **MacOS (Homebrew):**
 ``` Bash
@@ -46,14 +44,15 @@ brew install python@3.13
 ```Bash
 sudo apt install python3.13
 ```
-### Setup
+### Config local
 Clone o projeto para as máquinas que participarão da rede P2P. 
 ```bash
 git clone https://github.com/soarescamila/udp_server.git
 ```
-No arquivo `config.py`ajuste a comunicação entre as duas máquinas.
-Identifique o endereço IPv4 de cada computador na rede local via `i`pconfig no Windows ou `ifconfig no Mac/Linux`.
+No arquivo `config.py` ajuste a comunicação entre as duas máquinas.
+Identifique o endereço IPv4 de cada computador na rede local via `ipconfig` no Windows ou `ifconfig` no Mac/Linux.
 Por exemplo:
+
 Na Máquina 1  IP: 192.168.15.10:
 ```Python
 IP = '0.0.0.0'
@@ -68,7 +67,7 @@ PEERS = [('192.168.15.10', 5000)]  # IP da Máquina 1
 ```
 Para executar a aplicação use:
 ```bash
-python app.py
+python3 app.py
 ```
 ou
 ```bash
