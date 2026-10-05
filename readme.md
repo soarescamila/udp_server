@@ -75,3 +75,6 @@ py app.py
 ```
 
 O servidor UDP inicia em segundo plano na porta configurada e exibe os arquivos locais. O cliente varre a pasta e avisa os peers da rede quais arquivos possui, aquele arquivo que estiver faltando localmente, é solicitado aos peers da rede e baixado localmente. O servidor em segundo plano mantém a escuta, sincronizando a pasta a cada alteração feita pelos outros peers.
+
+---
+Integrante: Camila Soares
